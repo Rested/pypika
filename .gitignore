@@ -45,8 +45,14 @@ coverage.xml
 *,cover
 .hypothesis/
 
+# Mypy
+.mypy_cache/
+
 # PyCharm
 .idea/
+
+# Visual Studio Code
+.vscode/
 
 # Django stuff:
 *.log

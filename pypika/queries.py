@@ -1,9 +1,11 @@
 from copy import copy
 from functools import reduce
+from typing import Optional, Union, List, Tuple, Any
 
 from pypika.enums import (
     JoinType,
     UnionType,
+    Order,
 )
 from pypika.terms import (
     ArithmeticExpression,
@@ -32,11 +34,11 @@ __email__ = "theys@kayak.com"
 
 
 class Selectable:
-    def __init__(self, alias):
+    def __init__(self, alias: Optional[str]):
         self.alias = alias
 
     @builder
-    def as_(self, alias):
+    def as_(self, alias: str):
         self.alias = alias
 
     def field(self, name):
@@ -56,7 +58,7 @@ class Selectable:
 
 
 class AliasedQuery(Selectable):
-    def __init__(self, name, query=None):
+    def __init__(self, name: str, query=None):
         super(AliasedQuery, self).__init__(alias=name)
         self.name = name
         self.query = query
@@ -75,23 +77,23 @@ class AliasedQuery(Selectable):
 
 
 class Schema:
-    def __init__(self, name, parent=None):
+    def __init__(self, name: str, parent: Optional["Schema"]=None):
         self._name = name
         self._parent = parent
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         return isinstance(other, Schema) \
                and self._name == other._name \
                and self._parent == other._parent
 
-    def __ne__(self, other):
+    def __ne__(self, other: Any) -> bool:
         return not self.__eq__(other)
 
     @ignore_copy
-    def __getattr__(self, item):
+    def __getattr__(self, item: str) -> "Table":
         return Table(item, schema=self)
 
-    def get_sql(self, quote_char=None, **kwargs):
+    def get_sql(self, quote_char: Optional[str]=None, **kwargs) -> str:
         # FIXME escape
         schema_sql = format_quotes(self._name, quote_char)
 
@@ -105,13 +107,14 @@ class Schema:
 
 class Database(Schema):
     @ignore_copy
-    def __getattr__(self, item):
+    def __getattr__(self, item: str) -> Schema:
         return Schema(item, parent=self)
 
+TableSchemaType = Union[Schema, str, List[str], Tuple[str, ...], None]
 
 class Table(Selectable):
     @staticmethod
-    def _init_schema(schema):
+    def _init_schema(schema: TableSchemaType) -> Optional[Schema]:
         # This is a bit complicated in order to support backwards compatibility. It should probably be cleaned up for
         # the next major release. Schema is accepted as a string, list/tuple, Schema instance, or None
         if isinstance(schema, Schema):
@@ -122,12 +125,12 @@ class Table(Selectable):
             return Schema(schema)
         return None
 
-    def __init__(self, name, schema=None, alias=None):
+    def __init__(self, name: str, schema: TableSchemaType=None, alias: Optional[str]=None):
         super(Table, self).__init__(alias)
-        self._table_name = name
+        self._table_name = name 
         self._schema = self._init_schema(schema)
 
-    def get_sql(self, **kwargs):
+    def get_sql(self, **kwargs: str) -> str:
         quote_char = kwargs.get('quote_char')
         # FIXME escape
         table_sql = format_quotes(self._table_name, quote_char)
@@ -139,10 +142,10 @@ class Table(Selectable):
 
         return format_alias_sql(table_sql, self.alias, **kwargs)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.get_sql(quote_char='"')
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         if not isinstance(other, Table):
             return False
 
@@ -157,18 +160,18 @@ class Table(Selectable):
 
         return True
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         if self._schema:
             return "Table('{}', schema='{}')".format(self._table_name, self._schema)
         return "Table('{}')".format(self._table_name)
 
-    def __ne__(self, other):
+    def __ne__(self, other: Any) -> bool:
         return not self.__eq__(other)
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(str(self))
 
-    def select(self, *terms):
+    def select(self, *terms: Any) -> "QueryBuilder":
         """
         Perform a SELECT operation on the current table
 
@@ -181,7 +184,7 @@ class Table(Selectable):
         """
         return Query.from_(self).select(*terms)
 
-    def update(self):
+    def update(self) -> "QueryBuilder":
         """
         Perform an UPDATE operation on the current table
 
@@ -189,7 +192,7 @@ class Table(Selectable):
         """
         return Query.update(self)
 
-    def insert(self, *terms):
+    def insert(self, *terms: Any) -> "QueryBuilder":
         """
         Perform an INSERT operation on the current table
 
@@ -203,7 +206,7 @@ class Table(Selectable):
         return Query.into(self).insert(*terms)
 
 
-def make_tables(*names, **kwargs):
+def make_tables(*names: Any, **kwargs: TableSchemaType) -> List[Table]:
     """
         Shortcut to create many tables. If `names` param is a tuple, the first
         position will refer to the `_table_name` while the second will be its `alias`.
@@ -229,11 +232,11 @@ class Query:
     """
 
     @classmethod
-    def _builder(cls):
+    def _builder(cls) -> "QueryBuilder":
         return QueryBuilder()
 
     @classmethod
-    def from_(cls, table):
+    def from_(cls, table: Union[Table, str]) -> "QueryBuilder":
         """
         Query builder entry point.  Initializes query building and sets the table to select from.  When using this
         function, the query becomes a SELECT query.
@@ -248,7 +251,7 @@ class Query:
         return cls._builder().from_(table)
 
     @classmethod
-    def into(cls, table):
+    def into(cls, table: Union[Table, str]) -> "QueryBuilder":
         """
         Query builder entry point.  Initializes query building and sets the table to insert into.  When using this
         function, the query becomes an INSERT query.
@@ -263,11 +266,11 @@ class Query:
         return cls._builder().into(table)
 
     @classmethod
-    def with_(cls, table, name):
+    def with_(cls, table: Union[Table, str], name: str) -> "QueryBuilder":
         return cls._builder().with_(table, name)
 
     @classmethod
-    def select(cls, *terms):
+    def select(cls, *terms: Any) -> "QueryBuilder":
         """
         Query builder entry point.  Initializes query building without a table and selects fields.  Useful when testing
         SQL functions.
@@ -283,7 +286,7 @@ class Query:
         return cls._builder().select(*terms)
 
     @classmethod
-    def update(cls, table):
+    def update(cls, table: Union[Table, str]) -> "QueryBuilder":
         """
         Query builder entry point.  Initializes query building and sets the table to update.  When using this
         function, the query becomes an UPDATE query.
@@ -302,14 +305,14 @@ class _UnionQuery(Selectable, Term):
     """
     A Query class wrapper for a Union query, whether DISTINCT or ALL.
 
-    Created via the functionds `Query.union` or `Query.union_all`, this class should not be instantiated directly.
+    Created via the functions `Query.union` or `Query.union_all`, this class should not be instantiated directly.
     """
 
-    def __init__(self, base_query, union_query, union_type, alias=None, wrapper_cls=ValueWrapper):
+    def __init__(self, base_query, union_query, union_type, alias: Optional[str]=None, wrapper_cls=ValueWrapper):
         super(_UnionQuery, self).__init__(alias)
         self.base_query = base_query
         self._unions = [(union_type, union_query)]
-        self._orderbys = []
+        self._orderbys: List[Tuple[Field, Optional[Order]]] = []
 
         self._limit = None
         self._offset = None
@@ -317,7 +320,7 @@ class _UnionQuery(Selectable, Term):
         self._wrapper_cls = wrapper_cls
 
     @builder
-    def orderby(self, *fields, **kwargs):
+    def orderby(self, *fields: Any, **kwargs: Any) -> None:
         for field in fields:
             field = (Field(field, table=self.base_query._from[0])
                      if isinstance(field, str)
@@ -415,8 +418,9 @@ class _UnionQuery(Selectable, Term):
 
     def _limit_sql(self):
         return " LIMIT {limit}".format(limit=self._limit)
-
-
+x = _UnionQuery("x", "y", "z")
+reveal_type(x)
+reveal_type(x.orderby("x"))
 class QueryBuilder(Selectable, Term):
     """
     Query Builder is the main class in pypika which stores the state of a query and offers functions which allow the
@@ -567,7 +571,7 @@ class QueryBuilder(Selectable, Term):
         self._insert_table = table if isinstance(table, Table) else Table(table)
 
     @builder
-    def select(self, *terms):
+    def select(self, *terms) -> None:
         for term in terms:
             if isinstance(term, Field):
                 self._select_field(term)
